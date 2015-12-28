@@ -1,0 +1,167 @@
+---
+title: "Cousera Machine Learning Project"
+author: "Demudu Naganaidu"
+date: "December 20, 2015"
+output: html_document
+---
+
+
+##Introduction
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.
+
+In this project, our goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. The 6 young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
+
+
+Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes. Participants were supervised by an experienced weight lifter to make sure the execution complied to the manner they were supposed to simulate.  The supervisor made sure that all participants could easily simulate the mistakes in a safe and controlled manner by using a relatively light dumbbell (1.25kg).
+
+The above study and data for this project was genourously shared by:
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+##Data 
+
+
+The training data for this project are available from: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available from: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The test data will be used for validating the predictions accuracy of the model. As such it is renamed as the validation data, while the training data is spillt into training and testing with 75:25 ratio.
+
+
+```{r, echo=FALSE}
+
+# training <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",header=TRUE, stringsAsFactors = FALSE)
+# validation <-  read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", header=TRUE, stringsAsFactors = FALSE)
+setwd("D:/AppliedStatistics/Cousera Data Science Specialization/8_PREDMACHLEARN")
+
+training <- read.csv("pmltraining.csv",header=TRUE, stringsAsFactors = FALSE)
+validation <-  read.csv("pmltesting.csv", header=TRUE, stringsAsFactors = FALSE)
+library(ggplot2)
+library(caret)
+library(dplyr)
+library(gbm)
+```
+
+
+## Pre processing
+``` {r, echo=TRUE}
+dim(training)
+dim(validation)
+```
+
+There are 160 variables in the testing and validation data sets. First we find out variables which are with zero covariates
+
+```{r}
+nsv <- nearZeroVar(training, saveMetrics=TRUE)
+```
+
+This are variable with no covariates
+
+```{r}
+drops <- unlist(dimnames(subset(nsv, nsv$nzv==TRUE))[1])
+print(drops)
+```
+
+60 variables with zero covariates are removed from the training data set and validation data set. Leaving only 100 variables now. The new data set with 100 variables each created to keep the original data intact.
+
+```{r}
+newtraining <- training[,!(names(training) %in% drops)]
+```
+
+
+The observation ID , also user's name are not needed for building a prediction model and therefore we eliminate them. Furthermore, the provided information about the date are unlikely to contribute to our prediction as it seems that it merely indicates the date of performed observation. As a result, those are removed, too.
+
+```{r}
+newtraining <- newtraining[,-(1:5)]
+```
+
+That leaves us with 95 set of variables in each data set. From this variables, we remove those variables with percentage of NA's exit 95%
+
+```{r}
+
+colnums <- ncol(newtraining)
+drops <- NULL
+for ( i in 1: ncol(newtraining)) {
+    total_NA <- sum(is.na(newtraining[i]))
+    percentage <- (total_NA/length(newtraining[i]))
+    if (percentage > 0.9 ) {
+      temp <- names(newtraining[i])
+      drops <- c(drops, temp)
+    }
+}
+```
+This are variable with total NA's exceed 90%
+
+```{r}
+print(drops)
+```
+
+Total of 41 variables are removed from training and validation data sets. Leaving now 54 variables in the training data sets.
+
+```{r}
+newtraining <- newtraining[,!(names(newtraining) %in% drops)]
+```
+
+
+##Model building
+To build our prediction model, the new training data sampled for 5000 data for training and 1000 data for testing.
+
+```{r}
+modeltraining <- newtraining[sample(nrow(newtraining), 5000), ]
+modeltesting <- newtraining[sample(nrow(newtraining), 1000), ]
+```
+
+3 models are proposed here for building the prediction model
+Model 1, using the random forest alogaritham,
+model 2, using decision tree alogarithm, and
+Model 3, Using boosting alogarithm
+
+```{r}
+model1 <- train(classe ~ .,method="rf",data=modeltraining,verbose=F)
+model2 <- train(classe ~ .,method="rpart",data=modeltraining)
+model3 <- train(classe ~ .,method="gbm",data=modeltraining,verbose=F)
+
+```
+
+Random Forest Model- Prediction
+
+```{r}
+pred_model1 <- predict(model1, modeltesting)
+confusionMatrix(pred_model1, modeltesting$classe)
+```
+
+
+Decision Tree Model - Prediction
+
+```{r}
+pred_model2 <- predict(model2, modeltesting)
+confusionMatrix(pred_model2, modeltesting$classe)
+```
+
+
+Random Boosting Model  - Prediction
+
+```{r}
+pred_model3 <- predict(model3, modeltesting)
+confusionMatrix(pred_model3, modeltesting$classe)
+```
+
+##Accuracy
+Based on the accuracy of the above 3 confusionmatrix, both Model 1 and Model 3 perform better than Model 2 .
+Between Model 1 and Model 3, Model 1 perform slightly better. As such Model 1 choosed to predict the validation data set with 20 observations.
+
+##Prediction on the Validation Data set
+
+```{r}
+# select the variables 54 variables that was used for model building
+myvars <- names(modeltraining[,-54])
+```
+Our final predictions are :
+```{r, echo=FALSE}
+validation <- validation[myvars]
+validation$problem_id <- predict(model1, validation)
+print(validation$problem_id)
+```
